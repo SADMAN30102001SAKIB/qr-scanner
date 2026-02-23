@@ -1,20 +1,32 @@
-const CACHE = "qr-scanner-v3";
+const CACHE = "qr-scanner-v4";
 
-const ASSETS = [
+const REQUIRED_ASSETS = [
   "./",
   "./index.html",
   "./manifest.json",
+];
+
+const OPTIONAL_ASSETS = [
   "./icon-192.png",
   "./icon-512.png",
   "./favicon-32.png",
-  "./html5-qrcode.min.js"
+  "./html5-qrcode.min.js",  // present only if manually downloaded
 ];
 
-// Install: cache all shell assets
 self.addEventListener("install", event => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(ASSETS))
+    caches.open(CACHE).then(async cache => {
+      // Required assets — if these fail, something is genuinely wrong
+      await cache.addAll(REQUIRED_ASSETS);
+
+      // Optional assets — cache each one individually; ignore failures
+      await Promise.allSettled(
+        OPTIONAL_ASSETS.map(url =>
+          cache.add(url).catch(() => {/* missing or fetch failed — skip */})
+        )
+      );
+    })
   );
 });
 
