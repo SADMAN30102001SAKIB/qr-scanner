@@ -14,12 +14,30 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="manifest" href="manifest.json" />
 
-  <script src="html5-qrcode.min.js" onerror="
-    var s=document.createElement('script');
-    s.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
-    s.onerror=function(){document.getElementById('lib-error').classList.remove('hidden')};
-    document.head.appendChild(s);
-  "></script>
+  <!--
+    BUG 1 FIX: library timing race.
+    Create a Promise that resolves once whichever script (local or CDN)
+    actually finishes loading. Init code awaits this before running.
+  -->
+  <script>
+    window.__qrLibPromise = new Promise(function(resolve) {
+      window.__qrLibReady = resolve;
+    });
+  </script>
+  <script
+    src="html5-qrcode.min.js"
+    onload="window.__qrLibReady(true)"
+    onerror="
+      var s = document.createElement('script');
+      s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+      s.onload  = function() { window.__qrLibReady(true); };
+      s.onerror = function() {
+        window.__qrLibReady(false);
+        document.getElementById('lib-error').classList.remove('hidden');
+      };
+      document.head.appendChild(s);
+    "
+  ></script>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -792,10 +810,12 @@ clearBtn.onclick = () => {
 
 // ─── Page lifecycle ───────────────────────────────────────────────────────────
 document.addEventListener('visibilitychange', () => {
+  // BUG 2 FIX: always call stopScanner() — not scanner.stop() directly —
+  // so scanner is nulled and innerHTML is cleared, preventing double-video on return.
   if (document.hidden) {
-    if (scanning) { scanner?.stop().catch(()=>{}); }
+    stopScanner();
   } else {
-    if (scanning) startScanner();
+    startScanner();
   }
 });
 
@@ -838,8 +858,12 @@ if ('serviceWorker' in navigator) {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 renderHistory();
 
-// Enumerate cameras first, THEN start — this is the correct order
-loadCameras().then(() => startScanner());
+// BUG 1 FIX: await the library promise so we never run init before
+// Html5Qrcode is defined, regardless of whether local or CDN script loads.
+window.__qrLibPromise.then(function(loaded) {
+  if (!loaded) return; // lib-error banner already shown by onerror handler
+  loadCameras().then(() => startScanner());
+});
 </script>
 </body>
 </html>
