@@ -3,56 +3,81 @@
 <head>
   <meta charset="UTF-8" />
   <title>QR Scanner</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#020617" />
   <meta name="description" content="Fast, offline-ready QR code scanner PWA" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="manifest" href="manifest.json" />
 
-  <!-- Use local copy for offline support. Fallback to CDN. -->
-  <script>
-    function loadQrLib() {
-      var s = document.createElement("script");
-      s.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
-      document.head.appendChild(s);
-    }
-  </script>
-  <script src="html5-qrcode.min.js" onerror="loadQrLib()"></script>
+  <!-- Local first (offline), CDN fallback -->
+  <script src="html5-qrcode.min.js" onerror="
+    var s=document.createElement('script');
+    s.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+    s.onerror=function(){document.getElementById('lib-error').classList.remove('hidden')};
+    document.head.appendChild(s);
+  "></script>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #020617;
-      --surface: #0f172a;
-      --border: #1e293b;
-      --text: #e5e7eb;
-      --muted: #94a3b8;
-      --accent: #38bdf8;
+      --bg:          #020617;
+      --surface:     #0f172a;
+      --border:      #1e293b;
+      --text:        #e5e7eb;
+      --muted:       #94a3b8;
+      --accent:      #38bdf8;
       --accent-dark: #0284c7;
-      --success: #22c55e;
-      --radius: 10px;
+      --success:     #22c55e;
+      --danger:      #f87171;
+      --radius:      10px;
+      --safe-top:    env(safe-area-inset-top,    0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left:   env(safe-area-inset-left,   0px);
+      --safe-right:  env(safe-area-inset-right,  0px);
     }
 
+    html { height: 100%; }
+
     body {
-      font-family: system-ui, -apple-system, sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--bg);
       color: var(--text);
+      min-height: 100vh;
       min-height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 16px 16px 32px;
+      padding:
+        calc(var(--safe-top)    + 12px)
+        calc(var(--safe-right)  + 16px)
+        calc(var(--safe-bottom) + 28px)
+        calc(var(--safe-left)   + 16px);
+      -webkit-font-smoothing: antialiased;
     }
 
     .app {
       width: 100%;
-      max-width: 440px;
+      max-width: 480px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
+    }
+
+    /* ── Library error ── */
+    #lib-error {
+      background: #450a0a;
+      border: 1px solid var(--danger);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      font-size: 0.85rem;
+      color: var(--danger);
+      text-align: center;
     }
 
     /* ── Header ── */
@@ -61,111 +86,153 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      padding: 8px 0 4px;
+      padding: 6px 0;
     }
-
-    header h1 { font-size: 1.15rem; font-weight: 700; }
+    header h1 { font-size: 1.1rem; font-weight: 700; }
 
     /* ── Viewfinder ── */
-    #reader {
+    .viewer-wrap {
+      position: relative;
       width: 100%;
       border-radius: var(--radius);
       overflow: hidden;
       background: #000;
-      position: relative;
+      min-height: 180px;
     }
 
-    /* Override ugly html5-qrcode UI elements */
-    #reader video { border-radius: var(--radius); }
-    #reader img { display: none !important; }
-    #reader__scan_region { border: none !important; }
-    #reader__dashboard { display: none !important; }
+    #reader { width: 100%; }
 
-    /* ── Status bar ── */
+    /* Suppress all built-in html5-qrcode UI chrome */
+    #reader video           { display: block; width: 100% !important; }
+    #reader img             { display: none !important; }
+    #reader__scan_region    { border: none !important; box-shadow: none !important; }
+    #reader__dashboard      { display: none !important; }
+    #reader__header_message { display: none !important; }
+
+    /* Scan line — inside .viewer-wrap so position is relative to the box */
+    .scan-line {
+      position: absolute;
+      left: 10%; right: 10%;
+      height: 2px;
+      background: linear-gradient(to right, transparent, var(--accent), transparent);
+      border-radius: 2px;
+      animation: scanline 2s ease-in-out infinite;
+      pointer-events: none;
+      z-index: 5;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .scan-line.active { opacity: 1; }
+
+    @keyframes scanline {
+      0%   { top: 8%; }
+      50%  { top: 90%; }
+      100% { top: 8%; }
+    }
+
+    /* Corner brackets */
+    .corners { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+    .corners::before, .corners::after,
+    .corners span::before, .corners span::after {
+      content: ""; position: absolute;
+      width: 22px; height: 22px;
+      border-color: var(--accent); border-style: solid; border-width: 0;
+    }
+    .corners::before      { top:12px; left:12px;  border-top-width:3px;    border-left-width:3px;  border-radius:3px 0 0 0; }
+    .corners::after       { top:12px; right:12px; border-top-width:3px;    border-right-width:3px; border-radius:0 3px 0 0; }
+    .corners span::before { bottom:12px; left:12px;  border-bottom-width:3px; border-left-width:3px;  border-radius:0 0 0 3px; }
+    .corners span::after  { bottom:12px; right:12px; border-bottom-width:3px; border-right-width:3px; border-radius:0 0 3px 0; }
+
+    /* ── Status ── */
     #status {
       text-align: center;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       color: var(--muted);
-      min-height: 1.4em;
+      min-height: 1.3em;
+      padding: 2px 0;
       transition: color 0.2s;
     }
-    #status.ok { color: var(--success); }
-    #status.err { color: #f87171; }
+    #status.ok  { color: var(--success); }
+    #status.err { color: var(--danger); }
 
-    /* ── Controls row ── */
-    .controls {
-      display: flex;
-      gap: 8px;
-    }
-
+    /* ── Buttons ── */
     .btn {
-      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
       padding: 10px 12px;
       border-radius: var(--radius);
       border: none;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       font-weight: 600;
       cursor: pointer;
-      transition: transform 0.1s, background 0.15s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
+      transition: transform 0.1s, background 0.15s, opacity 0.15s;
+      white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
-    .btn:active { transform: scale(0.97); }
+    .btn:active   { transform: scale(0.96); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
     .btn-primary { background: var(--accent); color: var(--bg); }
-    .btn-primary:hover { background: var(--accent-dark); }
+    .btn-primary:not(:disabled):hover { background: var(--accent-dark); }
 
     .btn-ghost {
       background: var(--surface);
       color: var(--text);
       border: 1px solid var(--border);
     }
-    .btn-ghost:hover { background: var(--border); }
-    .btn-ghost.active { background: #fbbf24; color: #000; border-color: #fbbf24; }
+    .btn-ghost:not(:disabled):hover { background: var(--border); }
+    .btn-ghost.lit { background: #fbbf24; color: #000; border-color: #fbbf24; }
 
-    /* ── Toggle row ── */
+    /* ── Controls grid — responsive ── */
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .controls.three-col { grid-template-columns: 1fr 1fr 1fr; }
+
+    /* Very narrow phones (320px) — keep 2 cols max */
+    @media (max-width: 340px) {
+      .controls.three-col { grid-template-columns: 1fr 1fr; }
+    }
+
+    /* ── Toggles ── */
     .toggles {
       display: flex;
-      gap: 8px;
+      flex-wrap: wrap;
+      gap: 10px 20px;
       align-items: center;
-      font-size: 0.82rem;
+      font-size: 0.8rem;
       color: var(--muted);
     }
 
     .toggle-label {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 7px;
       cursor: pointer;
       user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
-    .toggle-switch {
-      position: relative;
-      width: 36px;
-      height: 20px;
-    }
-    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-switch { position: relative; width: 34px; height: 19px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
     .toggle-track {
-      position: absolute;
-      inset: 0;
-      background: var(--border);
-      border-radius: 20px;
+      position: absolute; inset: 0;
+      background: var(--border); border-radius: 20px;
       transition: background 0.2s;
     }
     .toggle-track::before {
-      content: "";
-      position: absolute;
-      left: 3px; top: 3px;
-      width: 14px; height: 14px;
-      background: white;
-      border-radius: 50%;
+      content: ""; position: absolute;
+      left: 3px; top: 3px; width: 13px; height: 13px;
+      background: #fff; border-radius: 50%;
       transition: left 0.2s;
     }
-    .toggle-switch input:checked + .toggle-track { background: var(--accent); }
-    .toggle-switch input:checked + .toggle-track::before { left: 19px; }
+    .toggle-switch input:checked + .toggle-track            { background: var(--accent); }
+    .toggle-switch input:checked + .toggle-track::before    { left: 18px; }
 
     /* ── Result card ── */
     .card {
@@ -178,548 +245,562 @@
       gap: 10px;
     }
 
-    .card.hidden { display: none; }
+    .card-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .card-label  { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 
-    .card-label {
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--muted);
-    }
-
-    .qr-type-badge {
-      display: inline-block;
-      font-size: 0.72rem;
-      font-weight: 700;
-      padding: 2px 8px;
-      border-radius: 99px;
-      background: var(--accent);
-      color: var(--bg);
-      margin-left: 6px;
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 0.7rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 99px;
+      background: var(--accent); color: var(--bg);
     }
 
     .result-text {
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       word-break: break-all;
       overflow-wrap: anywhere;
+      line-height: 1.55;
       color: var(--text);
-      line-height: 1.5;
+      max-height: 180px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
     }
-
-    .result-text a {
-      color: var(--accent);
-      text-decoration: none;
-    }
+    .result-text a   { color: var(--accent); text-decoration: none; }
     .result-text a:hover { text-decoration: underline; }
+    .result-text pre { white-space: pre-wrap; font-family: inherit; }
 
     .card-actions {
-      display: flex;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
-    .card-actions .btn { flex: 1; }
 
-    /* ── History ── */
-    .history-header {
+    /* ── Install banner ── */
+    #installBanner {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      font-size: 0.82rem;
     }
+    #installBanner span { color: var(--muted); }
 
-    .history-header h2 {
-      font-size: 0.95rem;
-      font-weight: 600;
+    /* ── History ── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2px 0;
     }
+    .section-header h2 { font-size: 0.9rem; font-weight: 600; }
 
     #clearHistory {
-      font-size: 0.75rem;
-      background: none;
-      border: none;
-      color: var(--muted);
-      cursor: pointer;
-      padding: 2px 4px;
-      border-radius: 4px;
+      background: none; border: none;
+      color: var(--muted); font-size: 0.75rem;
+      cursor: pointer; padding: 4px 6px; border-radius: 4px;
+      -webkit-tap-highlight-color: transparent;
     }
-    #clearHistory:hover { color: #f87171; }
+    #clearHistory:hover { color: var(--danger); }
 
-    #historyList {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+    #historyList { display: flex; flex-direction: column; gap: 7px; }
+
+    .history-empty {
+      font-size: 0.82rem; color: var(--muted);
+      text-align: center; padding: 16px;
     }
 
     .history-item {
+      display: flex; align-items: flex-start; gap: 10px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 10px 12px;
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
       cursor: pointer;
       transition: border-color 0.15s;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
     .history-item:hover { border-color: var(--accent); }
 
-    .history-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+    .history-icon { font-size: 1rem; flex-shrink: 0; line-height: 1.4; }
 
-    .history-content { flex: 1; min-width: 0; }
+    .history-body { flex: 1; min-width: 0; }
 
     .history-url {
-      font-size: 0.82rem;
+      font-size: 0.8rem;
       color: var(--accent);
       word-break: break-all;
       overflow-wrap: anywhere;
       display: -webkit-box;
       -webkit-line-clamp: 2;
+      line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
+      line-height: 1.4;
     }
 
-    .history-meta {
-      font-size: 0.72rem;
-      color: var(--muted);
-      margin-top: 3px;
-    }
+    .history-meta { font-size: 0.7rem; color: var(--muted); margin-top: 3px; }
 
     .history-copy {
-      background: none;
-      border: none;
-      color: var(--muted);
-      font-size: 0.9rem;
-      cursor: pointer;
-      padding: 2px;
-      flex-shrink: 0;
+      background: none; border: none;
+      color: var(--muted); font-size: 1rem;
+      cursor: pointer; padding: 2px 4px;
+      flex-shrink: 0; line-height: 1;
+      -webkit-tap-highlight-color: transparent;
     }
     .history-copy:hover { color: var(--accent); }
 
-    .empty-history {
-      font-size: 0.85rem;
-      color: var(--muted);
-      text-align: center;
-      padding: 12px;
-    }
-
-    /* ── Install banner ── */
-    #installBanner {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px 14px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      font-size: 0.85rem;
-    }
-    #installBanner.hidden { display: none; }
-    #installBanner span { color: var(--muted); }
-
-    /* ── Scan overlay animation ── */
-    #reader__scan_region {
-      position: relative;
-    }
-    .scan-line {
-      position: absolute;
-      left: 0; right: 0;
-      height: 2px;
-      background: linear-gradient(to right, transparent, var(--accent), transparent);
-      animation: scanline 2s linear infinite;
-      pointer-events: none;
-      z-index: 10;
-    }
-    @keyframes scanline {
-      0%   { top: 5%; }
-      50%  { top: 95%; }
-      100% { top: 5%; }
-    }
-
+    /* ── Utility ── */
     .hidden { display: none !important; }
+
+    @media (min-width: 600px) {
+      body { padding-top: 24px; }
+      .app { gap: 12px; }
+    }
   </style>
 </head>
 <body>
 
 <div class="app">
 
+  <!-- Library load failure -->
+  <div id="lib-error" class="hidden">
+    ⚠️ Could not load QR library. Check your internet connection and reload.
+  </div>
+
   <header>
-    <span style="font-size:1.4rem">📷</span>
+    <span aria-hidden="true" style="font-size:1.3rem">📷</span>
     <h1>QR Scanner</h1>
   </header>
 
-  <!-- Camera viewfinder -->
-  <div style="position:relative">
-    <div id="reader"></div>
-    <div class="scan-line" id="scanLine"></div>
+  <!-- Viewfinder -->
+  <div class="viewer-wrap">
+    <div id="reader" role="img" aria-label="Camera viewfinder"></div>
+    <div class="scan-line" id="scanLine" aria-hidden="true"></div>
+    <div class="corners" aria-hidden="true"><span></span></div>
   </div>
 
-  <div id="status">Starting camera…</div>
+  <p id="status" role="status" aria-live="polite">Starting camera…</p>
 
-  <!-- Camera controls -->
-  <div class="controls">
-    <button class="btn btn-ghost" id="switchCamera" title="Switch camera">⟳ Flip</button>
-    <button class="btn btn-ghost" id="torchBtn" title="Toggle flashlight">🔦 Flash</button>
-    <button class="btn btn-primary hidden" id="rescan">▶ Scan Again</button>
+  <!-- Controls — 2 cols normally, 3 cols when Scan Again is visible -->
+  <div class="controls" id="controls">
+    <button class="btn btn-ghost" id="switchCamera">⟳ Flip</button>
+    <button class="btn btn-ghost" id="torchBtn">🔦 Flash</button>
+    <button class="btn btn-primary hidden" id="rescanBtn">▶ Scan again</button>
   </div>
 
   <!-- Toggles -->
   <div class="toggles">
-    <label class="toggle-label">
+    <label class="toggle-label" for="autoOpenToggle">
       <span class="toggle-switch">
-        <input type="checkbox" id="autoOpen">
+        <input type="checkbox" id="autoOpenToggle">
         <span class="toggle-track"></span>
       </span>
       Auto-open links
     </label>
+    <label class="toggle-label" for="vibToggle">
+      <span class="toggle-switch">
+        <input type="checkbox" id="vibToggle" checked>
+        <span class="toggle-track"></span>
+      </span>
+      Vibrate
+    </label>
   </div>
 
   <!-- Result card -->
-  <div class="card hidden" id="result">
-    <div>
+  <div class="card hidden" id="resultCard" role="region" aria-label="Scan result">
+    <div class="card-header">
       <span class="card-label">Detected</span>
-      <span class="qr-type-badge" id="qrType">URL</span>
+      <span class="badge" id="qrBadge">📝 Text</span>
     </div>
-    <div class="result-text" id="resultContent"></div>
+    <div class="result-text" id="resultContent" aria-live="polite"></div>
     <div class="card-actions">
       <button class="btn btn-primary" id="actionBtn">Open</button>
-      <button class="btn btn-ghost" id="copyBtn">Copy</button>
+      <button class="btn btn-ghost"   id="copyBtn">Copy</button>
     </div>
   </div>
 
-  <!-- PWA install -->
-  <div id="installBanner" class="hidden">
-    <span>📲 Add to Home Screen</span>
-    <button class="btn btn-primary" id="installBtn" style="flex:0 0 auto;width:auto;padding:8px 14px">Install</button>
+  <!-- PWA install banner -->
+  <div id="installBanner" class="hidden" role="complementary">
+    <span>📲 Install as app</span>
+    <button class="btn btn-primary" id="installBtn" style="flex-shrink:0;padding:8px 16px">Install</button>
   </div>
 
   <!-- History -->
-  <div>
-    <div class="history-header">
-      <h2>History</h2>
-      <button id="clearHistory">Clear all</button>
-    </div>
+  <div class="section-header">
+    <h2>History</h2>
+    <button id="clearHistory" aria-label="Clear all scan history">Clear all</button>
   </div>
-  <div id="historyList"></div>
+  <div id="historyList" role="list"></div>
 
 </div>
 
 <script>
-// ──────────────────────────────────────────────
-// QR Intent Detector
-// ──────────────────────────────────────────────
-function detectType(text) {
-  if (/^https?:\/\//i.test(text))                       return { type: "URL",   icon: "🔗", action: "Open" };
-  if (/^WIFI:/i.test(text))                             return { type: "WiFi",  icon: "📶", action: "View" };
-  if (/^tel:/i.test(text))                              return { type: "Phone", icon: "📞", action: "Call" };
-  if (/^mailto:/i.test(text))                           return { type: "Email", icon: "📧", action: "Email" };
-  if (/^smsto?:/i.test(text))                           return { type: "SMS",   icon: "💬", action: "Text" };
-  if (/^BEGIN:VCARD/i.test(text))                       return { type: "Contact",icon:"👤", action: "View" };
-  if (/^geo:/i.test(text))                              return { type: "Maps",  icon: "🗺️", action: "Open" };
+"use strict";
+
+// ─── QR intent detection ──────────────────────────────────────────────────────
+const INTENTS = [
+  { test: /^https?:\/\//i,    type: "URL",     icon: "🔗", action: "Open"  },
+  { test: /^WIFI:/i,          type: "WiFi",    icon: "📶", action: "View"  },
+  { test: /^tel:/i,           type: "Phone",   icon: "📞", action: "Call"  },
+  { test: /^mailto:/i,        type: "Email",   icon: "📧", action: "Email" },
+  { test: /^smsto?:/i,        type: "SMS",     icon: "💬", action: "Text"  },
+  { test: /^BEGIN:VCARD/i,    type: "Contact", icon: "👤", action: "View"  },
+  { test: /^geo:/i,           type: "Maps",    icon: "🗺️", action: "Map"   },
+  { test: /^bitcoin:|^eth:/i, type: "Crypto",  icon: "₿",  action: "View"  },
+];
+
+function detectIntent(text) {
+  for (const i of INTENTS) { if (i.test.test(text)) return { ...i }; }
   return { type: "Text", icon: "📝", action: "Copy" };
 }
 
 function parseWifi(text) {
-  const s = text.match(/S:([^;]+)/)?.[1] || "?";
-  const p = text.match(/P:([^;]+)/)?.[1] || "";
-  const t = text.match(/T:([^;]+)/)?.[1] || "";
-  return `SSID: ${s}\nType: ${t}\nPassword: ${p || "(none)"}`;
+  const g = k => text.match(new RegExp(k + ':([^;]+)'))?.[1] ?? '';
+  return `Network:  ${g('S') || '?'}\nSecurity: ${g('T') || '?'}\nPassword: ${g('P') || '(none)'}`;
 }
 
-// ──────────────────────────────────────────────
-// State
-// ──────────────────────────────────────────────
-let scanner = null;
-let currentCamera = "environment"; // "environment" | "user"
-let torchOn = false;
-let scanning = false;
-let lastText = "";
+function buildResultNode(text, intent) {
+  const wrap = document.createElement('div');
+  if (intent.type === 'URL' || intent.type === 'Maps') {
+    const a = document.createElement('a');
+    a.href = text; a.textContent = text;
+    a.target = '_blank'; a.rel = 'noopener noreferrer';
+    wrap.appendChild(a);
+  } else if (intent.type === 'WiFi') {
+    const pre = document.createElement('pre');
+    pre.textContent = parseWifi(text);
+    wrap.appendChild(pre);
+  } else {
+    wrap.textContent = text;
+  }
+  return wrap;
+}
 
-// ──────────────────────────────────────────────
-// DOM refs
-// ──────────────────────────────────────────────
-const statusEl      = document.getElementById("status");
-const resultCard    = document.getElementById("result");
-const resultContent = document.getElementById("resultContent");
-const qrTypeEl      = document.getElementById("qrType");
-const actionBtn     = document.getElementById("actionBtn");
-const copyBtn       = document.getElementById("copyBtn");
-const rescanBtn     = document.getElementById("rescan");
-const switchBtn     = document.getElementById("switchCamera");
-const torchBtn      = document.getElementById("torchBtn");
-const autoOpenEl    = document.getElementById("autoOpen");
-const historyList   = document.getElementById("historyList");
-const clearBtn      = document.getElementById("clearHistory");
-const scanLine      = document.getElementById("scanLine");
+// ─── DOM refs ─────────────────────────────────────────────────────────────────
+const statusEl      = document.getElementById('status');
+const resultCard    = document.getElementById('resultCard');
+const resultContent = document.getElementById('resultContent');
+const qrBadge       = document.getElementById('qrBadge');
+const actionBtn     = document.getElementById('actionBtn');
+const copyBtn       = document.getElementById('copyBtn');
+const rescanBtn     = document.getElementById('rescanBtn');
+const switchBtn     = document.getElementById('switchCamera');
+const torchBtn      = document.getElementById('torchBtn');
+const autoOpenEl    = document.getElementById('autoOpenToggle');
+const vibEl         = document.getElementById('vibToggle');
+const historyList   = document.getElementById('historyList');
+const clearBtn      = document.getElementById('clearHistory');
+const scanLine      = document.getElementById('scanLine');
+const controlsEl    = document.getElementById('controls');
 
-// ──────────────────────────────────────────────
-// Status helpers
-// ──────────────────────────────────────────────
-function setStatus(msg, cls = "") {
+// ─── State ────────────────────────────────────────────────────────────────────
+let scanner        = null;
+let scanning       = false;
+let torchOn        = false;
+let torchAvailable = true;
+let cameraFacing   = 'environment';
+let lastText       = '';
+let lastIntent     = null;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function setStatus(msg, cls = '') {
   statusEl.textContent = msg;
   statusEl.className = cls;
 }
 
-// ──────────────────────────────────────────────
-// Scanner lifecycle
-// ──────────────────────────────────────────────
-async function startScan() {
+function showRescan(show) {
+  if (show) {
+    rescanBtn.classList.remove('hidden');
+    controlsEl.classList.add('three-col');
+  } else {
+    rescanBtn.classList.add('hidden');
+    controlsEl.classList.remove('three-col');
+  }
+}
+
+// ─── Scanner ──────────────────────────────────────────────────────────────────
+async function stopScanner() {
+  scanning = false;
+  scanLine.classList.remove('active');
+  if (scanner) {
+    try { await scanner.stop(); } catch (_) {}
+  }
+}
+
+async function startScanner() {
   if (!window.Html5Qrcode) {
-    setStatus("Library not loaded. Check your connection.", "err");
+    setStatus('QR library not loaded. Check your connection.', 'err');
     return;
   }
 
+  await stopScanner();
+
+  // Responsive qrbox — 72% of viewer width, max 280px
+  const viewerW = document.getElementById('reader').clientWidth || 300;
+  const boxSize = Math.min(Math.round(viewerW * 0.72), 280);
+
+  // Reset torch state
+  torchOn = false;
+  torchBtn.classList.remove('lit');
+  torchBtn.textContent = '🔦 Flash';
+  torchBtn.disabled = !torchAvailable;
+
+  // Reset result UI
+  resultCard.classList.add('hidden');
+  showRescan(false);
+
   try {
-    if (scanner) {
-      try { await scanner.stop(); } catch {}
-    }
-
-    scanner = new Html5Qrcode("reader");
+    scanner = new Html5Qrcode('reader');
     scanning = true;
-    scanLine.classList.remove("hidden");
-
-    setStatus("Scanning…");
-    resultCard.classList.add("hidden");
-    rescanBtn.classList.add("hidden");
+    scanLine.classList.add('active');
+    setStatus('Scanning…');
 
     await scanner.start(
-      { facingMode: currentCamera },
-      { fps: 12, qrbox: { width: 260, height: 260 }, aspectRatio: 1.0 },
+      { facingMode: cameraFacing },
+      {
+        fps: 12,
+        qrbox: { width: boxSize, height: boxSize },
+        aspectRatio: window.innerWidth > window.innerHeight ? 1.5 : 1.0,
+        disableFlip: false,
+      },
       onDecode,
-      () => {} // ignore frame errors
+      () => {} // per-frame decode attempts — not errors; ignore
     );
   } catch (err) {
     scanning = false;
-    scanLine.classList.add("hidden");
-    const msg = err?.toString() || "";
-    if (msg.includes("Permission")) {
-      setStatus("Camera blocked — enable permission and reload.", "err");
-    } else if (msg.includes("No cameras")) {
-      setStatus("No camera found on this device.", "err");
+    scanLine.classList.remove('active');
+    const msg = String(err);
+    if (/permission|denied/i.test(msg)) {
+      setStatus('Camera blocked — allow access in browser settings, then reload.', 'err');
+    } else if (/no cameras|notfound|no device/i.test(msg)) {
+      setStatus('No camera found on this device.', 'err');
+    } else if (/already started/i.test(msg)) {
+      // Race condition — silently ignore
     } else {
-      setStatus("Camera unavailable.", "err");
+      setStatus('Camera unavailable. Try reloading.', 'err');
     }
   }
 }
 
-async function stopScan() {
-  scanning = false;
-  scanLine.classList.add("hidden");
-  if (scanner) {
-    try { await scanner.stop(); } catch {}
-  }
-}
-
-// ──────────────────────────────────────────────
-// On QR decoded
-// ──────────────────────────────────────────────
+// ─── Decode ───────────────────────────────────────────────────────────────────
 async function onDecode(text) {
+  // Guard: ignore if we already stopped (e.g. history re-trigger)
   if (!scanning) return;
-  await stopScan();
+  await stopScanner();
 
-  navigator.vibrate?.(120);
-  lastText = text;
+  if (vibEl.checked) navigator.vibrate?.(130);
 
-  const { type, icon, action } = detectType(text);
-  qrTypeEl.textContent = type;
-  actionBtn.textContent = action;
+  lastText   = text;
+  lastIntent = detectIntent(text);
 
-  // Render result
-  resultContent.innerHTML = "";
-  if (type === "URL") {
-    const a = document.createElement("a");
-    a.href = text;
-    a.textContent = text;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    resultContent.appendChild(a);
-  } else if (type === "WiFi") {
-    resultContent.textContent = parseWifi(text);
-    resultContent.style.whiteSpace = "pre";
-  } else {
-    resultContent.textContent = text;
-    resultContent.style.whiteSpace = "";
-  }
+  qrBadge.textContent = `${lastIntent.icon} ${lastIntent.type}`;
+  resultContent.innerHTML = '';
+  resultContent.appendChild(buildResultNode(text, lastIntent));
+  actionBtn.textContent = lastIntent.action;
 
-  resultCard.classList.remove("hidden");
-  rescanBtn.classList.remove("hidden");
-  setStatus("QR code detected ✓", "ok");
+  resultCard.classList.remove('hidden');
+  showRescan(true);
+  setStatus('QR code detected ✓', 'ok');
 
-  saveHistory(text, type, icon);
+  saveHistory(text, lastIntent);
 
-  if (autoOpenEl.checked && type === "URL") {
-    window.open(text, "_blank", "noopener,noreferrer");
+  if (autoOpenEl.checked && (lastIntent.type === 'URL' || lastIntent.type === 'Maps')) {
+    window.open(text, '_blank', 'noopener,noreferrer');
   }
 }
 
-// ──────────────────────────────────────────────
-// Action button
-// ──────────────────────────────────────────────
-actionBtn.onclick = () => {
-  const { type } = detectType(lastText);
-  if (type === "URL" || type === "Maps" || type === "Phone" || type === "Email" || type === "SMS") {
-    window.open(lastText, "_blank", "noopener,noreferrer");
-  } else {
-    copyText(lastText, actionBtn, "Copied!");
-  }
-};
+// Load a history item into the result panel without touching the scanner
+function displayResult(text) {
+  lastText   = text;
+  lastIntent = detectIntent(text);
 
-// ──────────────────────────────────────────────
-// Copy helpers
-// ──────────────────────────────────────────────
-function copyText(text, btn, label = "Copied!") {
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(text).then(() => flash(btn, label));
-  } else {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-    flash(btn, label);
-  }
+  qrBadge.textContent = `${lastIntent.icon} ${lastIntent.type}`;
+  resultContent.innerHTML = '';
+  resultContent.appendChild(buildResultNode(text, lastIntent));
+  actionBtn.textContent = lastIntent.action;
+
+  resultCard.classList.remove('hidden');
+  showRescan(true);
+  setStatus('Loaded from history', 'ok');
+  resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function flash(btn, label) {
-  const orig = btn.textContent;
-  btn.textContent = label;
-  setTimeout(() => { btn.textContent = orig; }, 1400);
-}
+// ─── Controls ─────────────────────────────────────────────────────────────────
+rescanBtn.onclick = () => startScanner();
 
-copyBtn.onclick = () => copyText(lastText, copyBtn);
-
-// ──────────────────────────────────────────────
-// Controls
-// ──────────────────────────────────────────────
-rescanBtn.onclick = () => startScan();
-
-switchBtn.onclick = async () => {
-  currentCamera = currentCamera === "environment" ? "user" : "environment";
-  await startScan();
+switchBtn.onclick = () => {
+  cameraFacing = cameraFacing === 'environment' ? 'user' : 'environment';
+  startScanner();
 };
 
 torchBtn.onclick = async () => {
-  if (!scanner) return;
+  if (!scanner || !torchAvailable) return;
   try {
     torchOn = !torchOn;
     await scanner.applyVideoConstraints({ advanced: [{ torch: torchOn }] });
-    torchBtn.classList.toggle("active", torchOn);
-    torchBtn.textContent = torchOn ? "💡 Flash ON" : "🔦 Flash";
-  } catch {
-    torchBtn.textContent = "🔦 N/A";
+    torchBtn.classList.toggle('lit', torchOn);
+    torchBtn.textContent = torchOn ? '💡 Flash ON' : '🔦 Flash';
+  } catch (_) {
+    // Torch not supported — disable permanently
+    torchOn = false;
+    torchAvailable = false;
+    torchBtn.textContent = '🔦 N/A';
     torchBtn.disabled = true;
   }
 };
 
-// ──────────────────────────────────────────────
-// History
-// ──────────────────────────────────────────────
-function getHistory() {
-  try { return JSON.parse(localStorage.getItem("qr-history") || "[]"); }
-  catch { return []; }
+actionBtn.onclick = () => {
+  if (!lastText) return;
+  const openable = ['URL', 'Maps', 'Phone', 'Email', 'SMS', 'Crypto'];
+  if (openable.includes(lastIntent?.type)) {
+    window.open(lastText, '_blank', 'noopener,noreferrer');
+  } else {
+    copyText(lastText, actionBtn);
+  }
+};
+
+copyBtn.onclick = () => copyText(lastText, copyBtn);
+
+// ─── Clipboard ────────────────────────────────────────────────────────────────
+function copyText(text, btn) {
+  if (!text) return;
+  const orig = btn.textContent;
+  const done = () => { btn.textContent = '✓ Copied'; setTimeout(() => { btn.textContent = orig; }, 1500); };
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => { legacyCopy(text); done(); });
+  } else {
+    legacyCopy(text); done();
+  }
 }
 
-function saveHistory(text, type, icon) {
+function legacyCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand('copy'); } catch (_) {}
+  document.body.removeChild(ta);
+}
+
+// ─── History ──────────────────────────────────────────────────────────────────
+function getHistory() {
+  try { return JSON.parse(localStorage.getItem('qr-history') || '[]'); } catch { return []; }
+}
+
+function saveHistory(text, intent) {
   let h = getHistory().filter(i => i.text !== text);
-  h.unshift({ text, type, icon, time: Date.now() });
-  localStorage.setItem("qr-history", JSON.stringify(h.slice(0, 30)));
+  h.unshift({ text, type: intent.type, icon: intent.icon, time: Date.now() });
+  try { localStorage.setItem('qr-history', JSON.stringify(h.slice(0, 30))); } catch (_) {}
   renderHistory();
+}
+
+function timeAgo(ts) {
+  const m = Math.round((Date.now() - ts) / 60000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.round(m / 60);
+  if (h < 24) return h + 'h ago';
+  return Math.round(h / 24) + 'd ago';
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function renderHistory() {
   const h = getHistory();
-  historyList.innerHTML = "";
-  if (h.length === 0) {
-    historyList.innerHTML = `<div class="empty-history">No scans yet</div>`;
+  historyList.innerHTML = '';
+  if (!h.length) {
+    historyList.innerHTML = '<div class="history-empty">No scans yet</div>';
     return;
   }
-  h.slice(0, 8).forEach(item => {
-    const div = document.createElement("div");
-    div.className = "history-item";
+  h.slice(0, 10).forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'history-item';
+    row.setAttribute('role', 'listitem');
+    row.innerHTML =
+      '<span class="history-icon" aria-hidden="true">' + (item.icon || '📝') + '</span>' +
+      '<div class="history-body">' +
+        '<div class="history-url">' + esc(item.text) + '</div>' +
+        '<div class="history-meta">' + item.type + ' · ' + timeAgo(item.time) + '</div>' +
+      '</div>' +
+      '<button class="history-copy" aria-label="Copy to clipboard" title="Copy">⧉</button>';
 
-    const age = Math.round((Date.now() - item.time) / 60000);
-    const timeStr = age < 1 ? "just now" : age < 60 ? `${age}m ago` : `${Math.round(age/60)}h ago`;
-
-    div.innerHTML = `
-      <span class="history-icon">${item.icon || "📝"}</span>
-      <div class="history-content">
-        <div class="history-url">${escHtml(item.text)}</div>
-        <div class="history-meta">${item.type} · ${timeStr}</div>
-      </div>
-      <button class="history-copy" title="Copy">⧉</button>
-    `;
-
-    // Click row → trigger result
-    div.addEventListener("click", e => {
-      if (e.target.classList.contains("history-copy")) return;
-      onDecode(item.text);
+    row.addEventListener('click', e => {
+      if (e.target.classList.contains('history-copy')) return;
+      displayResult(item.text);
     });
-
-    div.querySelector(".history-copy").addEventListener("click", e => {
+    row.querySelector('.history-copy').addEventListener('click', e => {
       e.stopPropagation();
-      copyText(item.text, e.currentTarget, "✓");
+      copyText(item.text, e.currentTarget);
     });
-
-    historyList.appendChild(div);
+    historyList.appendChild(row);
   });
 }
 
-function escHtml(s) {
-  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}
-
 clearBtn.onclick = () => {
-  localStorage.removeItem("qr-history");
+  if (!getHistory().length) return;
+  localStorage.removeItem('qr-history');
   renderHistory();
 };
 
-// ──────────────────────────────────────────────
-// Page lifecycle — camera management
-// ──────────────────────────────────────────────
-document.addEventListener("visibilitychange", () => {
+// ─── Page lifecycle ───────────────────────────────────────────────────────────
+document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    if (scanning) scanner?.pause?.();
+    // Page hidden — stop camera to save battery
+    if (scanning) { scanner?.stop().catch(()=>{}); }
   } else {
-    if (scanning) scanner?.resume?.();
-    else startScan();
+    // Page visible again — restart only if we were in scanning state
+    if (scanning) startScanner();
   }
 });
 
-window.addEventListener("beforeunload", () => {
-  scanner?.stop?.().catch(() => {});
+window.addEventListener('beforeunload', () => {
+  scanner?.stop().catch(() => {});
 });
 
-// ──────────────────────────────────────────────
-// PWA Install prompt
-// ──────────────────────────────────────────────
-let installPrompt = null;
-const installBanner = document.getElementById("installBanner");
-const installBtnEl  = document.getElementById("installBtn");
+// Recalculate qrbox on resize / orientation change
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (scanning) startScanner(); }, 600);
+});
 
-window.addEventListener("beforeinstallprompt", e => {
+// ─── PWA install prompt ───────────────────────────────────────────────────────
+let deferredPrompt = null;
+const installBanner = document.getElementById('installBanner');
+const installBtn    = document.getElementById('installBtn');
+
+window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
-  installPrompt = e;
-  installBanner.classList.remove("hidden");
+  deferredPrompt = e;
+  installBanner.classList.remove('hidden');
 });
 
-installBtnEl.onclick = async () => {
-  if (!installPrompt) return;
-  installPrompt.prompt();
-  const { outcome } = await installPrompt.userChoice;
-  if (outcome === "accepted") installBanner.classList.add("hidden");
-  installPrompt = null;
+installBtn.onclick = async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  if (outcome === 'accepted') installBanner.classList.add('hidden');
+  deferredPrompt = null;
 };
 
-// ──────────────────────────────────────────────
-// Service Worker
-// ──────────────────────────────────────────────
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
+window.addEventListener('appinstalled', () => installBanner.classList.add('hidden'));
+
+// ─── Service Worker ───────────────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
-// ──────────────────────────────────────────────
-// Init
-// ──────────────────────────────────────────────
+// ─── Init ─────────────────────────────────────────────────────────────────────
 renderHistory();
-startScan();
+startScanner();
 </script>
 </body>
 </html>
