@@ -524,6 +524,7 @@ const controlsEl    = document.getElementById('controls');
 let scanner        = null;
 let scanning       = false;    // true only while scanner is physically running
 let scanningIntent = false;    // true when user wants to be scanning (survives tab hide)
+let starting       = false;    // lock: true while startScanner() is mid-execution
 let torchOn        = false;
 let torchAvailable = true;
 let lastText       = '';
@@ -594,32 +595,37 @@ async function startScanner() {
     return;
   }
 
-  await stopScanner();
-
-  // Small pause — lets the browser fully release the MediaStream before
-  // we request a new one. Prevents "device in use" errors on flip.
-  await delay(250);
-
-  const viewerW = document.getElementById('reader').clientWidth || 300;
-  const boxSize = Math.min(Math.round(viewerW * 0.72), 280);
-
-  // Reset torch
-  torchOn = false;
-  torchBtn.classList.remove('lit');
-  torchBtn.textContent = '🔦 Flash';
-  torchBtn.disabled = !torchAvailable;
-
-  resultCard.classList.add('hidden');
-  showRescan(false);
-  scanningIntent = true;  // user wants to scan
+  // Concurrency lock — if a start is already in progress, ignore this call.
+  // Without this, rapid taps (Flip x2, resize during startup) create orphaned
+  // scanner instances that hold the camera open and can never be stopped.
+  if (starting) return;
+  starting = true;
 
   try {
+    await stopScanner();
+
+    // Small pause — lets the browser fully release the MediaStream before
+    // we request a new one. Prevents "device in use" errors on flip.
+    await delay(250);
+
+    const viewerW = document.getElementById('reader').clientWidth || 300;
+    const boxSize = Math.min(Math.round(viewerW * 0.72), 280);
+
+    // Reset torch
+    torchOn = false;
+    torchBtn.classList.remove('lit');
+    torchBtn.textContent = '🔦 Flash';
+    torchBtn.disabled = !torchAvailable;
+
+    resultCard.classList.add('hidden');
+    showRescan(false);
+    scanningIntent = true;
+
     scanner = new Html5Qrcode('reader');
     scanning = true;
     scanLine.classList.add('active');
     setStatus('Scanning…');
 
-    // Use camera ID if we have it; fall back to facingMode string
     const cameraConstraint = cameras.length > 0
       ? cameras[cameraIndex].id
       : { facingMode: 'environment' };
@@ -645,12 +651,13 @@ async function startScanner() {
       setStatus('Camera blocked — allow access in browser settings, then reload.', 'err');
     } else if (/no cameras|notfound|no device/i.test(msg)) {
       setStatus('No camera found on this device.', 'err');
-    } else if (/already started/i.test(msg)) {
-      // Swallow race condition
     } else {
       setStatus('Camera unavailable. Try reloading.', 'err');
       console.error('[QR] startScanner error:', err);
     }
+  } finally {
+    // Always release the lock — whether start succeeded or failed
+    starting = false;
   }
 }
 
