@@ -3,203 +3,723 @@
 <head>
   <meta charset="UTF-8" />
   <title>QR Scanner</title>
-
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#020617" />
+  <meta name="description" content="Fast, offline-ready QR code scanner PWA" />
 
-  <!-- Favicon -->
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-
-  <!-- PWA -->
+  <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="manifest" href="manifest.json" />
 
-  <!-- QR Library -->
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <!-- Use local copy for offline support. Fallback to CDN. -->
+  <script>
+    function loadQrLib() {
+      var s = document.createElement("script");
+      s.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+      document.head.appendChild(s);
+    }
+  </script>
+  <script src="html5-qrcode.min.js" onerror="loadQrLib()"></script>
 
   <style>
-    * {
-      box-sizing: border-box;
-      font-family: system-ui, sans-serif;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #020617;
+      --surface: #0f172a;
+      --border: #1e293b;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-dark: #0284c7;
+      --success: #22c55e;
+      --radius: 10px;
     }
 
     body {
-      margin: 0;
-      padding: 16px;
-      background: #020617;
-      color: #e5e7eb;
-      min-height: 100vh;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
       display: flex;
-      justify-content: center;
+      flex-direction: column;
       align-items: center;
+      padding: 16px 16px 32px;
     }
 
     .app {
       width: 100%;
-      max-width: 420px;
-      background: #020617;
-      border-radius: 12px;
+      max-width: 440px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
     }
 
-    h1 {
-      text-align: center;
-      margin-bottom: 12px;
-      font-size: 1.2rem;
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px 0 4px;
     }
 
+    header h1 { font-size: 1.15rem; font-weight: 700; }
+
+    /* ── Viewfinder ── */
     #reader {
       width: 100%;
-      border-radius: 8px;
+      border-radius: var(--radius);
       overflow: hidden;
+      background: #000;
+      position: relative;
     }
 
-    .status {
-      margin: 10px 0;
+    /* Override ugly html5-qrcode UI elements */
+    #reader video { border-radius: var(--radius); }
+    #reader img { display: none !important; }
+    #reader__scan_region { border: none !important; }
+    #reader__dashboard { display: none !important; }
+
+    /* ── Status bar ── */
+    #status {
       text-align: center;
-      font-size: 0.9rem;
-      color: #94a3b8;
+      font-size: 0.85rem;
+      color: var(--muted);
+      min-height: 1.4em;
+      transition: color 0.2s;
+    }
+    #status.ok { color: var(--success); }
+    #status.err { color: #f87171; }
+
+    /* ── Controls row ── */
+    .controls {
+      display: flex;
+      gap: 8px;
     }
 
+    .btn {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      border: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s, background 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .btn:active { transform: scale(0.97); }
+
+    .btn-primary { background: var(--accent); color: var(--bg); }
+    .btn-primary:hover { background: var(--accent-dark); }
+
+    .btn-ghost {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--border); }
+    .btn-ghost.active { background: #fbbf24; color: #000; border-color: #fbbf24; }
+
+    /* ── Toggle row ── */
+    .toggles {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 36px;
+      height: 20px;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 20px;
+      transition: background 0.2s;
+    }
+    .toggle-track::before {
+      content: "";
+      position: absolute;
+      left: 3px; top: 3px;
+      width: 14px; height: 14px;
+      background: white;
+      border-radius: 50%;
+      transition: left 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-track { background: var(--accent); }
+    .toggle-switch input:checked + .toggle-track::before { left: 19px; }
+
+    /* ── Result card ── */
     .card {
-      border: 1px solid #1e293b;
-      border-radius: 8px;
-      padding: 10px;
-      margin-top: 10px;
-      word-break: break-all;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
 
-    a {
-      color: #38bdf8;
+    .card.hidden { display: none; }
+
+    .card-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+
+    .qr-type-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 99px;
+      background: var(--accent);
+      color: var(--bg);
+      margin-left: 6px;
+    }
+
+    .result-text {
+      font-size: 0.9rem;
+      word-break: break-all;
+      overflow-wrap: anywhere;
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .result-text a {
+      color: var(--accent);
       text-decoration: none;
     }
+    .result-text a:hover { text-decoration: underline; }
 
-    button {
-      margin-top: 8px;
-      width: 100%;
-      padding: 10px;
-      border-radius: 8px;
-      border: none;
+    .card-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .card-actions .btn { flex: 1; }
+
+    /* ── History ── */
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .history-header h2 {
+      font-size: 0.95rem;
       font-weight: 600;
-      background: #38bdf8;
-      color: #020617;
+    }
+
+    #clearHistory {
+      font-size: 0.75rem;
+      background: none;
+      border: none;
+      color: var(--muted);
       cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
     }
+    #clearHistory:hover { color: #f87171; }
 
-    .secondary {
-      background: #1e293b;
-      color: #e5e7eb;
-    }
-
-    .hidden {
-      display: none;
-    }
-
-    .history {
-      margin-top: 16px;
-    }
-
-    .history h2 {
-      font-size: 1rem;
-      margin-bottom: 6px;
+    #historyList {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
     .history-item {
-      font-size: 0.85rem;
-      margin-bottom: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s;
     }
+    .history-item:hover { border-color: var(--accent); }
+
+    .history-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+
+    .history-content { flex: 1; min-width: 0; }
+
+    .history-url {
+      font-size: 0.82rem;
+      color: var(--accent);
+      word-break: break-all;
+      overflow-wrap: anywhere;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .history-meta {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .history-copy {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 0.9rem;
+      cursor: pointer;
+      padding: 2px;
+      flex-shrink: 0;
+    }
+    .history-copy:hover { color: var(--accent); }
+
+    .empty-history {
+      font-size: 0.85rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 12px;
+    }
+
+    /* ── Install banner ── */
+    #installBanner {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.85rem;
+    }
+    #installBanner.hidden { display: none; }
+    #installBanner span { color: var(--muted); }
+
+    /* ── Scan overlay animation ── */
+    #reader__scan_region {
+      position: relative;
+    }
+    .scan-line {
+      position: absolute;
+      left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(to right, transparent, var(--accent), transparent);
+      animation: scanline 2s linear infinite;
+      pointer-events: none;
+      z-index: 10;
+    }
+    @keyframes scanline {
+      0%   { top: 5%; }
+      50%  { top: 95%; }
+      100% { top: 5%; }
+    }
+
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
 
 <div class="app">
-  <h1>QR Scanner</h1>
 
-  <div id="reader"></div>
+  <header>
+    <span style="font-size:1.4rem">📷</span>
+    <h1>QR Scanner</h1>
+  </header>
 
-  <div class="status" id="status">
-    Allow camera access
+  <!-- Camera viewfinder -->
+  <div style="position:relative">
+    <div id="reader"></div>
+    <div class="scan-line" id="scanLine"></div>
   </div>
 
-  <div id="result" class="card hidden">
-    <strong>Scanned:</strong><br>
-    <a id="link" target="_blank"></a>
-    <button id="copy">Copy link</button>
+  <div id="status">Starting camera…</div>
+
+  <!-- Camera controls -->
+  <div class="controls">
+    <button class="btn btn-ghost" id="switchCamera" title="Switch camera">⟳ Flip</button>
+    <button class="btn btn-ghost" id="torchBtn" title="Toggle flashlight">🔦 Flash</button>
+    <button class="btn btn-primary hidden" id="rescan">▶ Scan Again</button>
   </div>
 
-  <button id="rescan" class="hidden secondary">Scan again</button>
-
-  <div class="history">
-    <h2>History</h2>
-    <div id="historyList"></div>
+  <!-- Toggles -->
+  <div class="toggles">
+    <label class="toggle-label">
+      <span class="toggle-switch">
+        <input type="checkbox" id="autoOpen">
+        <span class="toggle-track"></span>
+      </span>
+      Auto-open links
+    </label>
   </div>
+
+  <!-- Result card -->
+  <div class="card hidden" id="result">
+    <div>
+      <span class="card-label">Detected</span>
+      <span class="qr-type-badge" id="qrType">URL</span>
+    </div>
+    <div class="result-text" id="resultContent"></div>
+    <div class="card-actions">
+      <button class="btn btn-primary" id="actionBtn">Open</button>
+      <button class="btn btn-ghost" id="copyBtn">Copy</button>
+    </div>
+  </div>
+
+  <!-- PWA install -->
+  <div id="installBanner" class="hidden">
+    <span>📲 Add to Home Screen</span>
+    <button class="btn btn-primary" id="installBtn" style="flex:0 0 auto;width:auto;padding:8px 14px">Install</button>
+  </div>
+
+  <!-- History -->
+  <div>
+    <div class="history-header">
+      <h2>History</h2>
+      <button id="clearHistory">Clear all</button>
+    </div>
+  </div>
+  <div id="historyList"></div>
+
 </div>
 
 <script>
-  const statusEl = document.getElementById("status");
-  const resultEl = document.getElementById("result");
-  const linkEl = document.getElementById("link");
-  const rescanBtn = document.getElementById("rescan");
-  const copyBtn = document.getElementById("copy");
-  const historyList = document.getElementById("historyList");
+// ──────────────────────────────────────────────
+// QR Intent Detector
+// ──────────────────────────────────────────────
+function detectType(text) {
+  if (/^https?:\/\//i.test(text))                       return { type: "URL",   icon: "🔗", action: "Open" };
+  if (/^WIFI:/i.test(text))                             return { type: "WiFi",  icon: "📶", action: "View" };
+  if (/^tel:/i.test(text))                              return { type: "Phone", icon: "📞", action: "Call" };
+  if (/^mailto:/i.test(text))                           return { type: "Email", icon: "📧", action: "Email" };
+  if (/^smsto?:/i.test(text))                           return { type: "SMS",   icon: "💬", action: "Text" };
+  if (/^BEGIN:VCARD/i.test(text))                       return { type: "Contact",icon:"👤", action: "View" };
+  if (/^geo:/i.test(text))                              return { type: "Maps",  icon: "🗺️", action: "Open" };
+  return { type: "Text", icon: "📝", action: "Copy" };
+}
 
-  const scanner = new Html5Qrcode("reader");
+function parseWifi(text) {
+  const s = text.match(/S:([^;]+)/)?.[1] || "?";
+  const p = text.match(/P:([^;]+)/)?.[1] || "";
+  const t = text.match(/T:([^;]+)/)?.[1] || "";
+  return `SSID: ${s}\nType: ${t}\nPassword: ${p || "(none)"}`;
+}
 
-  function loadHistory() {
-    const history = JSON.parse(localStorage.getItem("qr-history") || "[]");
-    historyList.innerHTML = "";
-    history.slice(0, 5).forEach(item => {
-      const div = document.createElement("div");
-      div.className = "history-item";
-      div.textContent = item;
-      historyList.appendChild(div);
-    });
+// ──────────────────────────────────────────────
+// State
+// ──────────────────────────────────────────────
+let scanner = null;
+let currentCamera = "environment"; // "environment" | "user"
+let torchOn = false;
+let scanning = false;
+let lastText = "";
+
+// ──────────────────────────────────────────────
+// DOM refs
+// ──────────────────────────────────────────────
+const statusEl      = document.getElementById("status");
+const resultCard    = document.getElementById("result");
+const resultContent = document.getElementById("resultContent");
+const qrTypeEl      = document.getElementById("qrType");
+const actionBtn     = document.getElementById("actionBtn");
+const copyBtn       = document.getElementById("copyBtn");
+const rescanBtn     = document.getElementById("rescan");
+const switchBtn     = document.getElementById("switchCamera");
+const torchBtn      = document.getElementById("torchBtn");
+const autoOpenEl    = document.getElementById("autoOpen");
+const historyList   = document.getElementById("historyList");
+const clearBtn      = document.getElementById("clearHistory");
+const scanLine      = document.getElementById("scanLine");
+
+// ──────────────────────────────────────────────
+// Status helpers
+// ──────────────────────────────────────────────
+function setStatus(msg, cls = "") {
+  statusEl.textContent = msg;
+  statusEl.className = cls;
+}
+
+// ──────────────────────────────────────────────
+// Scanner lifecycle
+// ──────────────────────────────────────────────
+async function startScan() {
+  if (!window.Html5Qrcode) {
+    setStatus("Library not loaded. Check your connection.", "err");
+    return;
   }
 
-  function saveHistory(text) {
-    const history = JSON.parse(localStorage.getItem("qr-history") || "[]");
-    history.unshift(text);
-    localStorage.setItem("qr-history", JSON.stringify(history.slice(0, 20)));
-    loadHistory();
-  }
+  try {
+    if (scanner) {
+      try { await scanner.stop(); } catch {}
+    }
 
-  function startScan() {
-    statusEl.textContent = "Scanning…";
-    scanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      text => {
-        scanner.stop();
-        linkEl.textContent = text;
-        linkEl.href = text;
-        resultEl.classList.remove("hidden");
-        rescanBtn.classList.remove("hidden");
-        statusEl.textContent = "QR detected";
-        saveHistory(text);
-      }
-    ).catch(() => {
-      statusEl.textContent = "Camera unavailable";
-    });
-  }
+    scanner = new Html5Qrcode("reader");
+    scanning = true;
+    scanLine.classList.remove("hidden");
 
-  copyBtn.onclick = () => {
-    navigator.clipboard.writeText(linkEl.textContent);
-    copyBtn.textContent = "Copied!";
-    setTimeout(() => copyBtn.textContent = "Copy link", 1200);
-  };
-
-  rescanBtn.onclick = () => {
-    resultEl.classList.add("hidden");
+    setStatus("Scanning…");
+    resultCard.classList.add("hidden");
     rescanBtn.classList.add("hidden");
-    startScan();
-  };
 
-  loadHistory();
-  startScan();
-
-  // Register Service Worker
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js");
+    await scanner.start(
+      { facingMode: currentCamera },
+      { fps: 12, qrbox: { width: 260, height: 260 }, aspectRatio: 1.0 },
+      onDecode,
+      () => {} // ignore frame errors
+    );
+  } catch (err) {
+    scanning = false;
+    scanLine.classList.add("hidden");
+    const msg = err?.toString() || "";
+    if (msg.includes("Permission")) {
+      setStatus("Camera blocked — enable permission and reload.", "err");
+    } else if (msg.includes("No cameras")) {
+      setStatus("No camera found on this device.", "err");
+    } else {
+      setStatus("Camera unavailable.", "err");
+    }
   }
-</script>
+}
 
+async function stopScan() {
+  scanning = false;
+  scanLine.classList.add("hidden");
+  if (scanner) {
+    try { await scanner.stop(); } catch {}
+  }
+}
+
+// ──────────────────────────────────────────────
+// On QR decoded
+// ──────────────────────────────────────────────
+async function onDecode(text) {
+  if (!scanning) return;
+  await stopScan();
+
+  navigator.vibrate?.(120);
+  lastText = text;
+
+  const { type, icon, action } = detectType(text);
+  qrTypeEl.textContent = type;
+  actionBtn.textContent = action;
+
+  // Render result
+  resultContent.innerHTML = "";
+  if (type === "URL") {
+    const a = document.createElement("a");
+    a.href = text;
+    a.textContent = text;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    resultContent.appendChild(a);
+  } else if (type === "WiFi") {
+    resultContent.textContent = parseWifi(text);
+    resultContent.style.whiteSpace = "pre";
+  } else {
+    resultContent.textContent = text;
+    resultContent.style.whiteSpace = "";
+  }
+
+  resultCard.classList.remove("hidden");
+  rescanBtn.classList.remove("hidden");
+  setStatus("QR code detected ✓", "ok");
+
+  saveHistory(text, type, icon);
+
+  if (autoOpenEl.checked && type === "URL") {
+    window.open(text, "_blank", "noopener,noreferrer");
+  }
+}
+
+// ──────────────────────────────────────────────
+// Action button
+// ──────────────────────────────────────────────
+actionBtn.onclick = () => {
+  const { type } = detectType(lastText);
+  if (type === "URL" || type === "Maps" || type === "Phone" || type === "Email" || type === "SMS") {
+    window.open(lastText, "_blank", "noopener,noreferrer");
+  } else {
+    copyText(lastText, actionBtn, "Copied!");
+  }
+};
+
+// ──────────────────────────────────────────────
+// Copy helpers
+// ──────────────────────────────────────────────
+function copyText(text, btn, label = "Copied!") {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => flash(btn, label));
+  } else {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    flash(btn, label);
+  }
+}
+
+function flash(btn, label) {
+  const orig = btn.textContent;
+  btn.textContent = label;
+  setTimeout(() => { btn.textContent = orig; }, 1400);
+}
+
+copyBtn.onclick = () => copyText(lastText, copyBtn);
+
+// ──────────────────────────────────────────────
+// Controls
+// ──────────────────────────────────────────────
+rescanBtn.onclick = () => startScan();
+
+switchBtn.onclick = async () => {
+  currentCamera = currentCamera === "environment" ? "user" : "environment";
+  await startScan();
+};
+
+torchBtn.onclick = async () => {
+  if (!scanner) return;
+  try {
+    torchOn = !torchOn;
+    await scanner.applyVideoConstraints({ advanced: [{ torch: torchOn }] });
+    torchBtn.classList.toggle("active", torchOn);
+    torchBtn.textContent = torchOn ? "💡 Flash ON" : "🔦 Flash";
+  } catch {
+    torchBtn.textContent = "🔦 N/A";
+    torchBtn.disabled = true;
+  }
+};
+
+// ──────────────────────────────────────────────
+// History
+// ──────────────────────────────────────────────
+function getHistory() {
+  try { return JSON.parse(localStorage.getItem("qr-history") || "[]"); }
+  catch { return []; }
+}
+
+function saveHistory(text, type, icon) {
+  let h = getHistory().filter(i => i.text !== text);
+  h.unshift({ text, type, icon, time: Date.now() });
+  localStorage.setItem("qr-history", JSON.stringify(h.slice(0, 30)));
+  renderHistory();
+}
+
+function renderHistory() {
+  const h = getHistory();
+  historyList.innerHTML = "";
+  if (h.length === 0) {
+    historyList.innerHTML = `<div class="empty-history">No scans yet</div>`;
+    return;
+  }
+  h.slice(0, 8).forEach(item => {
+    const div = document.createElement("div");
+    div.className = "history-item";
+
+    const age = Math.round((Date.now() - item.time) / 60000);
+    const timeStr = age < 1 ? "just now" : age < 60 ? `${age}m ago` : `${Math.round(age/60)}h ago`;
+
+    div.innerHTML = `
+      <span class="history-icon">${item.icon || "📝"}</span>
+      <div class="history-content">
+        <div class="history-url">${escHtml(item.text)}</div>
+        <div class="history-meta">${item.type} · ${timeStr}</div>
+      </div>
+      <button class="history-copy" title="Copy">⧉</button>
+    `;
+
+    // Click row → trigger result
+    div.addEventListener("click", e => {
+      if (e.target.classList.contains("history-copy")) return;
+      onDecode(item.text);
+    });
+
+    div.querySelector(".history-copy").addEventListener("click", e => {
+      e.stopPropagation();
+      copyText(item.text, e.currentTarget, "✓");
+    });
+
+    historyList.appendChild(div);
+  });
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+clearBtn.onclick = () => {
+  localStorage.removeItem("qr-history");
+  renderHistory();
+};
+
+// ──────────────────────────────────────────────
+// Page lifecycle — camera management
+// ──────────────────────────────────────────────
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (scanning) scanner?.pause?.();
+  } else {
+    if (scanning) scanner?.resume?.();
+    else startScan();
+  }
+});
+
+window.addEventListener("beforeunload", () => {
+  scanner?.stop?.().catch(() => {});
+});
+
+// ──────────────────────────────────────────────
+// PWA Install prompt
+// ──────────────────────────────────────────────
+let installPrompt = null;
+const installBanner = document.getElementById("installBanner");
+const installBtnEl  = document.getElementById("installBtn");
+
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();
+  installPrompt = e;
+  installBanner.classList.remove("hidden");
+});
+
+installBtnEl.onclick = async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice;
+  if (outcome === "accepted") installBanner.classList.add("hidden");
+  installPrompt = null;
+};
+
+// ──────────────────────────────────────────────
+// Service Worker
+// ──────────────────────────────────────────────
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+
+// ──────────────────────────────────────────────
+// Init
+// ──────────────────────────────────────────────
+renderHistory();
+startScan();
+</script>
 </body>
 </html>
