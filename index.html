@@ -830,7 +830,7 @@ window.addEventListener('beforeunload', () => {
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { if (scanning) startScanner(); }, 600);
+  resizeTimer = setTimeout(() => { if (scanningIntent) startScanner(); }, 600);
 });
 
 // ─── PWA install ──────────────────────────────────────────────────────────────
