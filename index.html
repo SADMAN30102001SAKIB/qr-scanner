@@ -522,7 +522,8 @@ const controlsEl    = document.getElementById('controls');
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let scanner        = null;
-let scanning       = false;
+let scanning       = false;    // true only while scanner is physically running
+let scanningIntent = false;    // true when user wants to be scanning (survives tab hide)
 let torchOn        = false;
 let torchAvailable = true;
 let lastText       = '';
@@ -610,6 +611,7 @@ async function startScanner() {
 
   resultCard.classList.add('hidden');
   showRescan(false);
+  scanningIntent = true;  // user wants to scan
 
   try {
     scanner = new Html5Qrcode('reader');
@@ -656,6 +658,7 @@ async function startScanner() {
 async function onDecode(text) {
   if (!scanning) return;
   await stopScanner();
+  scanningIntent = false;  // user got a result — don't restart on tab return
 
   if (vibEl.checked) navigator.vibrate?.(130);
 
@@ -810,12 +813,13 @@ clearBtn.onclick = () => {
 
 // ─── Page lifecycle ───────────────────────────────────────────────────────────
 document.addEventListener('visibilitychange', () => {
-  // BUG 2 FIX: always call stopScanner() — not scanner.stop() directly —
-  // so scanner is nulled and innerHTML is cleared, preventing double-video on return.
   if (document.hidden) {
     stopScanner();
+    // scanning is now false, but scanningIntent remembers whether
+    // the user was mid-scan vs viewing a result
   } else {
-    startScanner();
+    // Only restart if the user was actively scanning before hiding
+    if (scanningIntent) startScanner();
   }
 });
 
