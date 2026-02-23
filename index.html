@@ -2,42 +2,45 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Simple QR Scanner</title>
+  <title>QR Scanner</title>
 
-  <!-- QR Scanner Library -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#020617" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- QR Library -->
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
     * {
       box-sizing: border-box;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: system-ui, sans-serif;
     }
 
     body {
       margin: 0;
       padding: 16px;
-      background: #0f172a;
+      background: #020617;
       color: #e5e7eb;
+      min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 100vh;
     }
 
-    .container {
+    .app {
       width: 100%;
       max-width: 420px;
       background: #020617;
       border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
     }
 
     h1 {
       text-align: center;
-      font-size: 1.2rem;
       margin-bottom: 12px;
+      font-size: 1.2rem;
     }
 
     #reader {
@@ -47,117 +50,153 @@
     }
 
     .status {
-      margin-top: 12px;
-      font-size: 0.9rem;
+      margin: 10px 0;
       text-align: center;
+      font-size: 0.9rem;
       color: #94a3b8;
     }
 
-    .result {
-      margin-top: 16px;
-      background: #020617;
+    .card {
       border: 1px solid #1e293b;
       border-radius: 8px;
-      padding: 12px;
+      padding: 10px;
+      margin-top: 10px;
       word-break: break-all;
     }
 
-    .result a {
+    a {
       color: #38bdf8;
       text-decoration: none;
     }
 
-    .result a:hover {
-      text-decoration: underline;
+    button {
+      margin-top: 8px;
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      font-weight: 600;
+      background: #38bdf8;
+      color: #020617;
+      cursor: pointer;
+    }
+
+    .secondary {
+      background: #1e293b;
+      color: #e5e7eb;
     }
 
     .hidden {
       display: none;
     }
 
-    button {
-      margin-top: 12px;
-      width: 100%;
-      padding: 10px;
-      border-radius: 8px;
-      border: none;
-      background: #38bdf8;
-      color: #020617;
-      font-weight: 600;
-      cursor: pointer;
+    .history {
+      margin-top: 16px;
     }
 
-    button:active {
-      transform: scale(0.98);
+    .history h2 {
+      font-size: 1rem;
+      margin-bottom: 6px;
+    }
+
+    .history-item {
+      font-size: 0.85rem;
+      margin-bottom: 6px;
     }
   </style>
 </head>
 <body>
 
-  <div class="container">
-    <h1>QR Code Scanner</h1>
+<div class="app">
+  <h1>QR Scanner</h1>
 
-    <div id="reader"></div>
+  <div id="reader"></div>
 
-    <div class="status" id="status">
-      Allow camera access and point at a QR code
-    </div>
-
-    <div class="result hidden" id="result">
-      <strong>Detected link:</strong><br />
-      <a id="link" href="#" target="_blank" rel="noopener noreferrer"></a>
-    </div>
-
-    <button id="rescan" class="hidden">Scan another</button>
+  <div class="status" id="status">
+    Allow camera access
   </div>
 
-  <script>
-    const resultBox = document.getElementById("result");
-    const linkEl = document.getElementById("link");
-    const statusEl = document.getElementById("status");
-    const rescanBtn = document.getElementById("rescan");
+  <div id="result" class="card hidden">
+    <strong>Scanned:</strong><br>
+    <a id="link" target="_blank"></a>
+    <button id="copy">Copy link</button>
+  </div>
 
-    const qr = new Html5Qrcode("reader");
+  <button id="rescan" class="hidden secondary">Scan again</button>
 
-    function startScanner() {
-      statusEl.textContent = "Scanning…";
+  <div class="history">
+    <h2>History</h2>
+    <div id="historyList"></div>
+  </div>
+</div>
 
-      qr.start(
-        { facingMode: "environment" }, // back camera
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 }
-        },
-        (decodedText) => {
-          // SUCCESS
-          qr.stop();
+<script>
+  const statusEl = document.getElementById("status");
+  const resultEl = document.getElementById("result");
+  const linkEl = document.getElementById("link");
+  const rescanBtn = document.getElementById("rescan");
+  const copyBtn = document.getElementById("copy");
+  const historyList = document.getElementById("historyList");
 
-          resultBox.classList.remove("hidden");
-          rescanBtn.classList.remove("hidden");
+  const scanner = new Html5Qrcode("reader");
 
-          linkEl.textContent = decodedText;
-          linkEl.href = decodedText;
-
-          statusEl.textContent = "QR code detected";
-        },
-        () => {
-          // ignore scan errors (normal behavior)
-        }
-      ).catch(err => {
-        statusEl.textContent = "Camera not available or permission denied";
-        console.error(err);
-      });
-    }
-
-    rescanBtn.addEventListener("click", () => {
-      resultBox.classList.add("hidden");
-      rescanBtn.classList.add("hidden");
-      startScanner();
+  function loadHistory() {
+    const history = JSON.parse(localStorage.getItem("qr-history") || "[]");
+    historyList.innerHTML = "";
+    history.slice(0, 5).forEach(item => {
+      const div = document.createElement("div");
+      div.className = "history-item";
+      div.textContent = item;
+      historyList.appendChild(div);
     });
+  }
 
-    // Auto-start on load
-    startScanner();
-  </script>
+  function saveHistory(text) {
+    const history = JSON.parse(localStorage.getItem("qr-history") || "[]");
+    history.unshift(text);
+    localStorage.setItem("qr-history", JSON.stringify(history.slice(0, 20)));
+    loadHistory();
+  }
+
+  function startScan() {
+    statusEl.textContent = "Scanning…";
+    scanner.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      text => {
+        scanner.stop();
+        linkEl.textContent = text;
+        linkEl.href = text;
+        resultEl.classList.remove("hidden");
+        rescanBtn.classList.remove("hidden");
+        statusEl.textContent = "QR detected";
+        saveHistory(text);
+      }
+    ).catch(() => {
+      statusEl.textContent = "Camera unavailable";
+    });
+  }
+
+  copyBtn.onclick = () => {
+    navigator.clipboard.writeText(linkEl.textContent);
+    copyBtn.textContent = "Copied!";
+    setTimeout(() => copyBtn.textContent = "Copy link", 1200);
+  };
+
+  rescanBtn.onclick = () => {
+    resultEl.classList.add("hidden");
+    rescanBtn.classList.add("hidden");
+    startScan();
+  };
+
+  loadHistory();
+  startScan();
+
+  // Register Service Worker
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js");
+  }
+</script>
 
 </body>
 </html>
