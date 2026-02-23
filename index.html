@@ -553,33 +553,45 @@ function showRescan(show) {
 }
 
 // ─── Camera enumeration ───────────────────────────────────────────────────────
+
+// Known virtual / software cameras that can't actually capture video.
+// These show up in getCameras() but throw NotReadableError when started.
+const VIRTUAL_CAM = /nvidia|obs|virtual|droidcam|epoccam|camo|iriun|manycam|splitcam|xsplit|snap|mmhmm/i;
+
+// Preferred real camera labels — used to pick the best default on PC
+const REAL_CAM_PREF = /integrated|built.?in|webcam|facetime|front|back|rear|environment|usb/i;
+
 async function loadCameras() {
   try {
     const list = await Html5Qrcode.getCameras();
     if (!list || list.length === 0) {
-      // Browser returned empty list — no cameras available
       disableAllCameraControls();
       return;
     }
-    cameras = list;
 
-    // Default to back camera
-    const backIdx = list.findIndex(c => /back|rear|environment/i.test(c.label));
-    cameraIndex = backIdx >= 0 ? backIdx : 0;
+    // Filter out known virtual cameras so they never get selected
+    const real = list.filter(c => !VIRTUAL_CAM.test(c.label));
+    // If filtering removes everything, fall back to full list (edge case)
+    cameras = real.length > 0 ? real : list;
 
-    // Single camera — disable flip
-    if (list.length < 2) switchBtn.disabled = true;
+    // Pick best default:
+    // 1. back/rear/environment (phone)
+    // 2. integrated/built-in/webcam (laptop)
+    // 3. first in list
+    const backIdx = cameras.findIndex(c => /back|rear|environment/i.test(c.label));
+    const realIdx = cameras.findIndex(c => REAL_CAM_PREF.test(c.label));
+    cameraIndex   = backIdx >= 0 ? backIdx : realIdx >= 0 ? realIdx : 0;
+
+    if (cameras.length < 2) switchBtn.disabled = true;
 
   } catch (_) {
-    // Enumeration failed entirely — disable flip since we can't know what's available.
-    // startScanner will fall back to facingMode and handle further errors.
     switchBtn.disabled = true;
   }
 }
 
 function disableAllCameraControls() {
-  switchBtn.disabled = true;
-  torchBtn.disabled  = true;
+  switchBtn.disabled   = true;
+  torchBtn.disabled    = true;
   torchBtn.textContent = '🔦 N/A';
 }
 
@@ -595,6 +607,53 @@ async function stopScanner() {
 }
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Try starting one specific camera. Returns true on success, false on failure.
+async function tryStartCamera(constraint, boxSize) {
+  const RETRY_DELAYS = [0, 600, 1200];
+  for (let attempt = 0; attempt < RETRY_DELAYS.length; attempt++) {
+    if (RETRY_DELAYS[attempt] > 0) {
+      setStatus('Retrying camera…');
+      await delay(RETRY_DELAYS[attempt]);
+    }
+    try {
+      // verbose: false — kills the built-in html5-qrcode play button / camera
+      // icon UI at the source so we don't have to fight it with CSS
+      scanner = new Html5Qrcode('reader', { verbose: false });
+      scanning = true;
+      scanLine.classList.add('active');
+      setStatus('Scanning…');
+
+      await scanner.start(
+        constraint,
+        {
+          fps: 12,
+          qrbox: { width: boxSize, height: boxSize },
+          aspectRatio: window.innerWidth > window.innerHeight ? 1.5 : 1.0,
+          disableFlip: false,
+        },
+        onDecode,
+        () => {}
+      );
+      return true; // success
+
+    } catch (err) {
+      scanning = false;
+      scanLine.classList.remove('active');
+      if (scanner) { try { await scanner.stop(); } catch (_) {} scanner = null; }
+      document.getElementById('reader').innerHTML = '';
+
+      const msg = String(err);
+      // Only retry on NotReadableError — other errors won't be helped by waiting
+      if (!/notreadable|could not start/i.test(msg)) {
+        throw err; // rethrow non-retryable errors immediately
+      }
+      // If this was the last attempt, fall through and return false
+      if (attempt === RETRY_DELAYS.length - 1) return false;
+    }
+  }
+  return false;
+}
 
 async function startScanner() {
   if (!window.Html5Qrcode) {
@@ -612,8 +671,7 @@ async function startScanner() {
     const viewerW = document.getElementById('reader').clientWidth || 300;
     const boxSize = Math.min(Math.round(viewerW * 0.72), 280);
 
-    // Reset torch for this session — each camera gets a fresh attempt.
-    // torchAvailable was permanently false once it failed before; that was wrong.
+    // Reset torch state for this session
     torchOn        = false;
     torchAvailable = true;
     torchBtn.classList.remove('lit');
@@ -624,77 +682,64 @@ async function startScanner() {
     showRescan(false);
     scanningIntent = true;
 
-    const cameraConstraint = cameras.length > 0
-      ? cameras[cameraIndex].id
-      : { facingMode: 'environment' };
+    if (cameras.length > 0) {
+      // Try the selected camera first.
+      // If it fails with NotReadableError (e.g. virtual cam that slipped through),
+      // auto-skip to the next real camera instead of showing an error.
+      const startIdx   = cameraIndex;
+      let   succeeded  = false;
 
-    // Retry loop — specifically for NotReadableError where the OS hasn't
-    // released the previous MediaStream yet. 3 attempts with growing delays.
-    const RETRY_DELAYS = [0, 600, 1200];
-    let lastErr = null;
-
-    for (let attempt = 0; attempt < RETRY_DELAYS.length; attempt++) {
-      if (RETRY_DELAYS[attempt] > 0) {
-        setStatus('Retrying camera…');
-        await delay(RETRY_DELAYS[attempt]);
-      }
-      try {
-        scanner = new Html5Qrcode('reader');
-        scanning = true;
-        scanLine.classList.add('active');
-        setStatus('Scanning…');
-
-        await scanner.start(
-          cameraConstraint,
-          {
-            fps: 12,
-            qrbox: { width: boxSize, height: boxSize },
-            aspectRatio: window.innerWidth > window.innerHeight ? 1.5 : 1.0,
-            disableFlip: false,
-          },
-          onDecode,
-          () => {}
-        );
-        lastErr = null;
-        break; // success — exit retry loop
-
-      } catch (err) {
-        // Clean up the failed instance before retrying
-        scanning = false;
-        scanLine.classList.remove('active');
-        if (scanner) {
-          try { await scanner.stop(); } catch (_) {}
-          scanner = null;
+      for (let i = 0; i < cameras.length; i++) {
+        const idx = (startIdx + i) % cameras.length;
+        try {
+          const ok = await tryStartCamera(cameras[idx].id, boxSize);
+          if (ok) {
+            cameraIndex = idx; // update so flip cycles from correct position
+            succeeded   = true;
+            break;
+          }
+          // NotReadableError after retries — this camera is unusable, try next
+          if (cameras.length > 1) setStatus('Skipping unavailable camera…');
+        } catch (err) {
+          // Non-retryable error — surface it immediately
+          handleCameraError(err);
+          return;
         }
-        document.getElementById('reader').innerHTML = '';
-        lastErr = err;
-
-        const msg = String(err);
-        // Only retry on NotReadableError — other errors won't be helped by waiting
-        if (!/notreadable|could not start/i.test(msg)) break;
       }
-    }
 
-    // All attempts exhausted — show the right error
-    if (lastErr) {
-      const msg = String(lastErr);
-      if (/permission|denied/i.test(msg)) {
-        setStatus('Camera blocked — allow access in browser settings, then reload.', 'err');
-        disableAllCameraControls();
-      } else if (/no cameras|notfound|no device/i.test(msg)) {
-        setStatus('No camera found on this device.', 'err');
-        disableAllCameraControls();
-      } else if (/notreadable|could not start/i.test(msg)) {
-        setStatus('Camera in use by another app. Close it and retry.', 'err');
-      } else {
-        setStatus('Camera unavailable. Try reloading.', 'err');
-        console.error('[QR] startScanner error:', lastErr);
+      if (!succeeded) {
+        setStatus('No usable camera found. Another app may be using it.', 'err');
+        scanningIntent = false;
+      }
+
+    } else {
+      // No enumerated cameras — fall back to facingMode
+      try {
+        const ok = await tryStartCamera({ facingMode: 'environment' }, boxSize);
+        if (!ok) setStatus('Camera in use by another app. Close it and retry.', 'err');
+      } catch (err) {
+        handleCameraError(err);
       }
     }
 
   } finally {
     starting = false;
   }
+}
+
+function handleCameraError(err) {
+  const msg = String(err);
+  if (/permission|denied/i.test(msg)) {
+    setStatus('Camera blocked — allow access in browser settings, then reload.', 'err');
+    disableAllCameraControls();
+  } else if (/no cameras|notfound|no device/i.test(msg)) {
+    setStatus('No camera found on this device.', 'err');
+    disableAllCameraControls();
+  } else {
+    setStatus('Camera unavailable. Try reloading.', 'err');
+    console.error('[QR] camera error:', err);
+  }
+  scanningIntent = false;
 }
 
 // ─── Decode ───────────────────────────────────────────────────────────────────
