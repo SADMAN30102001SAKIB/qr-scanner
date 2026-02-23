@@ -14,7 +14,6 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="manifest" href="manifest.json" />
 
-  <!-- Local first (offline), CDN fallback -->
   <script src="html5-qrcode.min.js" onerror="
     var s=document.createElement('script');
     s.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
@@ -69,7 +68,6 @@
       gap: 10px;
     }
 
-    /* ── Library error ── */
     #lib-error {
       background: #450a0a;
       border: 1px solid var(--danger);
@@ -80,7 +78,6 @@
       text-align: center;
     }
 
-    /* ── Header ── */
     header {
       display: flex;
       align-items: center;
@@ -90,7 +87,7 @@
     }
     header h1 { font-size: 1.1rem; font-weight: 700; }
 
-    /* ── Viewfinder ── */
+    /* ── Viewfinder ──────────────────────────────────── */
     .viewer-wrap {
       position: relative;
       width: 100%;
@@ -100,16 +97,33 @@
       min-height: 180px;
     }
 
+    /*
+      FIX 1 — DOUBLE VIDEO:
+      html5-qrcode appends its own <video> and <canvas> into #reader.
+      Force only ONE video visible and kill any extra ones.
+    */
     #reader { width: 100%; }
 
-    /* Suppress all built-in html5-qrcode UI chrome */
-    #reader video           { display: block; width: 100% !important; }
-    #reader img             { display: none !important; }
-    #reader__scan_region    { border: none !important; box-shadow: none !important; }
-    #reader__dashboard      { display: none !important; }
-    #reader__header_message { display: none !important; }
+    #reader > video {
+      display: block !important;
+      width: 100% !important;
+      max-height: 60vh;
+      object-fit: cover;
+    }
 
-    /* Scan line — inside .viewer-wrap so position is relative to the box */
+    /* Hide every video after the first (duplicates) */
+    #reader > video ~ video { display: none !important; }
+
+    /* Suppress ALL built-in library UI chrome */
+    #reader canvas             { display: none !important; }
+    #reader img                { display: none !important; }
+    #reader__scan_region       { border: none !important; box-shadow: none !important; }
+    #reader__dashboard         { display: none !important; }
+    #reader__header_message    { display: none !important; }
+    #reader__status_span       { display: none !important; }
+    #reader__filescan_input    { display: none !important; }
+
+    /* Scan line — inside viewer-wrap, correct relative positioning */
     .scan-line {
       position: absolute;
       left: 10%; right: 10%;
@@ -138,8 +152,8 @@
       width: 22px; height: 22px;
       border-color: var(--accent); border-style: solid; border-width: 0;
     }
-    .corners::before      { top:12px; left:12px;  border-top-width:3px;    border-left-width:3px;  border-radius:3px 0 0 0; }
-    .corners::after       { top:12px; right:12px; border-top-width:3px;    border-right-width:3px; border-radius:0 3px 0 0; }
+    .corners::before      { top:12px; left:12px;   border-top-width:3px;    border-left-width:3px;  border-radius:3px 0 0 0; }
+    .corners::after       { top:12px; right:12px;  border-top-width:3px;    border-right-width:3px; border-radius:0 3px 0 0; }
     .corners span::before { bottom:12px; left:12px;  border-bottom-width:3px; border-left-width:3px;  border-radius:0 0 0 3px; }
     .corners span::after  { bottom:12px; right:12px; border-bottom-width:3px; border-right-width:3px; border-radius:0 0 3px 0; }
 
@@ -186,7 +200,7 @@
     .btn-ghost:not(:disabled):hover { background: var(--border); }
     .btn-ghost.lit { background: #fbbf24; color: #000; border-color: #fbbf24; }
 
-    /* ── Controls grid — responsive ── */
+    /* ── Controls grid ── */
     .controls {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -194,7 +208,6 @@
     }
     .controls.three-col { grid-template-columns: 1fr 1fr 1fr; }
 
-    /* Very narrow phones (320px) — keep 2 cols max */
     @media (max-width: 340px) {
       .controls.three-col { grid-template-columns: 1fr 1fr; }
     }
@@ -231,8 +244,8 @@
       background: #fff; border-radius: 50%;
       transition: left 0.2s;
     }
-    .toggle-switch input:checked + .toggle-track            { background: var(--accent); }
-    .toggle-switch input:checked + .toggle-track::before    { left: 18px; }
+    .toggle-switch input:checked + .toggle-track         { background: var(--accent); }
+    .toggle-switch input:checked + .toggle-track::before { left: 18px; }
 
     /* ── Result card ── */
     .card {
@@ -327,7 +340,6 @@
     .history-item:hover { border-color: var(--accent); }
 
     .history-icon { font-size: 1rem; flex-shrink: 0; line-height: 1.4; }
-
     .history-body { flex: 1; min-width: 0; }
 
     .history-url {
@@ -354,7 +366,6 @@
     }
     .history-copy:hover { color: var(--accent); }
 
-    /* ── Utility ── */
     .hidden { display: none !important; }
 
     @media (min-width: 600px) {
@@ -367,7 +378,6 @@
 
 <div class="app">
 
-  <!-- Library load failure -->
   <div id="lib-error" class="hidden">
     ⚠️ Could not load QR library. Check your internet connection and reload.
   </div>
@@ -377,7 +387,6 @@
     <h1>QR Scanner</h1>
   </header>
 
-  <!-- Viewfinder -->
   <div class="viewer-wrap">
     <div id="reader" role="img" aria-label="Camera viewfinder"></div>
     <div class="scan-line" id="scanLine" aria-hidden="true"></div>
@@ -386,14 +395,12 @@
 
   <p id="status" role="status" aria-live="polite">Starting camera…</p>
 
-  <!-- Controls — 2 cols normally, 3 cols when Scan Again is visible -->
   <div class="controls" id="controls">
     <button class="btn btn-ghost" id="switchCamera">⟳ Flip</button>
     <button class="btn btn-ghost" id="torchBtn">🔦 Flash</button>
     <button class="btn btn-primary hidden" id="rescanBtn">▶ Scan again</button>
   </div>
 
-  <!-- Toggles -->
   <div class="toggles">
     <label class="toggle-label" for="autoOpenToggle">
       <span class="toggle-switch">
@@ -411,7 +418,6 @@
     </label>
   </div>
 
-  <!-- Result card -->
   <div class="card hidden" id="resultCard" role="region" aria-label="Scan result">
     <div class="card-header">
       <span class="card-label">Detected</span>
@@ -424,13 +430,11 @@
     </div>
   </div>
 
-  <!-- PWA install banner -->
   <div id="installBanner" class="hidden" role="complementary">
     <span>📲 Install as app</span>
     <button class="btn btn-primary" id="installBtn" style="flex-shrink:0;padding:8px 16px">Install</button>
   </div>
 
-  <!-- History -->
   <div class="section-header">
     <h2>History</h2>
     <button id="clearHistory" aria-label="Clear all scan history">Clear all</button>
@@ -461,7 +465,7 @@ function detectIntent(text) {
 
 function parseWifi(text) {
   const g = k => text.match(new RegExp(k + ':([^;]+)'))?.[1] ?? '';
-  return `Network:  ${g('S') || '?'}\nSecurity: ${g('T') || '?'}\nPassword: ${g('P') || '(none)'}`;
+  return 'Network:  ' + (g('S') || '?') + '\nSecurity: ' + (g('T') || '?') + '\nPassword: ' + (g('P') || '(none)');
 }
 
 function buildResultNode(text, intent) {
@@ -503,34 +507,67 @@ let scanner        = null;
 let scanning       = false;
 let torchOn        = false;
 let torchAvailable = true;
-let cameraFacing   = 'environment';
 let lastText       = '';
 let lastIntent     = null;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+/*
+  FIX 2 — CAMERA FLIP CRASH:
+  Instead of using facingMode strings (unreliable on mobile), we enumerate
+  the actual device IDs from the browser and cycle between them by ID.
+  This is what html5-qrcode itself recommends for switching cameras.
+*/
+let cameras      = [];   // [{id, label}, ...]
+let cameraIndex  = 0;    // which camera we're on
+
 function setStatus(msg, cls = '') {
   statusEl.textContent = msg;
   statusEl.className = cls;
 }
 
 function showRescan(show) {
-  if (show) {
-    rescanBtn.classList.remove('hidden');
-    controlsEl.classList.add('three-col');
-  } else {
-    rescanBtn.classList.add('hidden');
-    controlsEl.classList.remove('three-col');
+  if (show) { rescanBtn.classList.remove('hidden'); controlsEl.classList.add('three-col'); }
+  else       { rescanBtn.classList.add('hidden');   controlsEl.classList.remove('three-col'); }
+}
+
+// ─── Camera enumeration ───────────────────────────────────────────────────────
+async function loadCameras() {
+  try {
+    const list = await Html5Qrcode.getCameras();
+    if (!list || list.length === 0) return;
+    cameras = list;
+
+    // Default to back camera: prefer one whose label contains 'back' or 'rear'
+    const backIdx = list.findIndex(c =>
+      /back|rear|environment/i.test(c.label)
+    );
+    cameraIndex = backIdx >= 0 ? backIdx : 0;
+
+    // Hide flip button if there's only one camera
+    if (list.length < 2) switchBtn.disabled = true;
+  } catch (_) {
+    // Enumeration failed — fall back to facingMode in startScanner
   }
 }
 
-// ─── Scanner ──────────────────────────────────────────────────────────────────
+// ─── Scanner lifecycle ────────────────────────────────────────────────────────
 async function stopScanner() {
   scanning = false;
   scanLine.classList.remove('active');
   if (scanner) {
     try { await scanner.stop(); } catch (_) {}
+    scanner = null;
   }
+
+  /*
+    FIX 1 — DOUBLE VIDEO:
+    After stopping, clear the #reader div completely so html5-qrcode
+    can't accumulate stale <video> / <canvas> elements on next start.
+  */
+  const readerEl = document.getElementById('reader');
+  readerEl.innerHTML = '';
 }
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function startScanner() {
   if (!window.Html5Qrcode) {
@@ -540,17 +577,19 @@ async function startScanner() {
 
   await stopScanner();
 
-  // Responsive qrbox — 72% of viewer width, max 280px
+  // Small pause — lets the browser fully release the MediaStream before
+  // we request a new one. Prevents "device in use" errors on flip.
+  await delay(250);
+
   const viewerW = document.getElementById('reader').clientWidth || 300;
   const boxSize = Math.min(Math.round(viewerW * 0.72), 280);
 
-  // Reset torch state
+  // Reset torch
   torchOn = false;
   torchBtn.classList.remove('lit');
   torchBtn.textContent = '🔦 Flash';
   torchBtn.disabled = !torchAvailable;
 
-  // Reset result UI
   resultCard.classList.add('hidden');
   showRescan(false);
 
@@ -560,8 +599,13 @@ async function startScanner() {
     scanLine.classList.add('active');
     setStatus('Scanning…');
 
+    // Use camera ID if we have it; fall back to facingMode string
+    const cameraConstraint = cameras.length > 0
+      ? cameras[cameraIndex].id
+      : { facingMode: 'environment' };
+
     await scanner.start(
-      { facingMode: cameraFacing },
+      cameraConstraint,
       {
         fps: 12,
         qrbox: { width: boxSize, height: boxSize },
@@ -569,27 +613,29 @@ async function startScanner() {
         disableFlip: false,
       },
       onDecode,
-      () => {} // per-frame decode attempts — not errors; ignore
+      () => {}
     );
   } catch (err) {
     scanning = false;
     scanLine.classList.remove('active');
+    scanner = null;
+
     const msg = String(err);
     if (/permission|denied/i.test(msg)) {
       setStatus('Camera blocked — allow access in browser settings, then reload.', 'err');
     } else if (/no cameras|notfound|no device/i.test(msg)) {
       setStatus('No camera found on this device.', 'err');
     } else if (/already started/i.test(msg)) {
-      // Race condition — silently ignore
+      // Swallow race condition
     } else {
       setStatus('Camera unavailable. Try reloading.', 'err');
+      console.error('[QR] startScanner error:', err);
     }
   }
 }
 
 // ─── Decode ───────────────────────────────────────────────────────────────────
 async function onDecode(text) {
-  // Guard: ignore if we already stopped (e.g. history re-trigger)
   if (!scanning) return;
   await stopScanner();
 
@@ -598,7 +644,7 @@ async function onDecode(text) {
   lastText   = text;
   lastIntent = detectIntent(text);
 
-  qrBadge.textContent = `${lastIntent.icon} ${lastIntent.type}`;
+  qrBadge.textContent = lastIntent.icon + ' ' + lastIntent.type;
   resultContent.innerHTML = '';
   resultContent.appendChild(buildResultNode(text, lastIntent));
   actionBtn.textContent = lastIntent.action;
@@ -614,16 +660,13 @@ async function onDecode(text) {
   }
 }
 
-// Load a history item into the result panel without touching the scanner
 function displayResult(text) {
   lastText   = text;
   lastIntent = detectIntent(text);
-
-  qrBadge.textContent = `${lastIntent.icon} ${lastIntent.type}`;
+  qrBadge.textContent = lastIntent.icon + ' ' + lastIntent.type;
   resultContent.innerHTML = '';
   resultContent.appendChild(buildResultNode(text, lastIntent));
   actionBtn.textContent = lastIntent.action;
-
   resultCard.classList.remove('hidden');
   showRescan(true);
   setStatus('Loaded from history', 'ok');
@@ -634,7 +677,8 @@ function displayResult(text) {
 rescanBtn.onclick = () => startScanner();
 
 switchBtn.onclick = () => {
-  cameraFacing = cameraFacing === 'environment' ? 'user' : 'environment';
+  if (cameras.length < 2) return;
+  cameraIndex = (cameraIndex + 1) % cameras.length;
   startScanner();
 };
 
@@ -646,7 +690,6 @@ torchBtn.onclick = async () => {
     torchBtn.classList.toggle('lit', torchOn);
     torchBtn.textContent = torchOn ? '💡 Flash ON' : '🔦 Flash';
   } catch (_) {
-    // Torch not supported — disable permanently
     torchOn = false;
     torchAvailable = false;
     torchBtn.textContent = '🔦 N/A';
@@ -656,8 +699,7 @@ torchBtn.onclick = async () => {
 
 actionBtn.onclick = () => {
   if (!lastText) return;
-  const openable = ['URL', 'Maps', 'Phone', 'Email', 'SMS', 'Crypto'];
-  if (openable.includes(lastIntent?.type)) {
+  if (['URL','Maps','Phone','Email','SMS','Crypto'].includes(lastIntent?.type)) {
     window.open(lastText, '_blank', 'noopener,noreferrer');
   } else {
     copyText(lastText, actionBtn);
@@ -673,9 +715,7 @@ function copyText(text, btn) {
   const done = () => { btn.textContent = '✓ Copied'; setTimeout(() => { btn.textContent = orig; }, 1500); };
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(text).then(done).catch(() => { legacyCopy(text); done(); });
-  } else {
-    legacyCopy(text); done();
-  }
+  } else { legacyCopy(text); done(); }
 }
 
 function legacyCopy(text) {
@@ -753,10 +793,8 @@ clearBtn.onclick = () => {
 // ─── Page lifecycle ───────────────────────────────────────────────────────────
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    // Page hidden — stop camera to save battery
     if (scanning) { scanner?.stop().catch(()=>{}); }
   } else {
-    // Page visible again — restart only if we were in scanning state
     if (scanning) startScanner();
   }
 });
@@ -765,14 +803,13 @@ window.addEventListener('beforeunload', () => {
   scanner?.stop().catch(() => {});
 });
 
-// Recalculate qrbox on resize / orientation change
 let resizeTimer;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => { if (scanning) startScanner(); }, 600);
 });
 
-// ─── PWA install prompt ───────────────────────────────────────────────────────
+// ─── PWA install ──────────────────────────────────────────────────────────────
 let deferredPrompt = null;
 const installBanner = document.getElementById('installBanner');
 const installBtn    = document.getElementById('installBtn');
@@ -800,7 +837,9 @@ if ('serviceWorker' in navigator) {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 renderHistory();
-startScanner();
+
+// Enumerate cameras first, THEN start — this is the correct order
+loadCameras().then(() => startScanner());
 </script>
 </body>
 </html>
